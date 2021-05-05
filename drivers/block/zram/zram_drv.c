@@ -34,6 +34,7 @@
 #include <linux/debugfs.h>
 #include <linux/cpuhotplug.h>
 #include <linux/part_stat.h>
+#include "linux/fs.h"
 
 #include "zram_drv.h"
 
@@ -1342,6 +1343,25 @@ static int __zram_bvec_write(struct zram *zram, struct bio_vec *bvec,
 compress_again:
 	zstrm = zcomp_stream_get(zram->comp);
 	src = kmap_atomic(page);
+
+	static int zram_page_cnt = 0;
+    char path[50];
+	if(PageWP(page)){
+		sprintf(path, "/home/nn/Documents/work/wp_log/%d", zram_page_cnt++);
+	}else if(PageSWAP(page)){
+		sprintf(path, "/home/nn/Documents/work/swap_log/%d", zram_page_cnt++);
+	}else if(PageANON(page)){
+		sprintf(path, "/home/nn/Documents/work/anon_log/%d", zram_page_cnt++);
+	}else{
+		sprintf(path, "/home/nn/Documents/work/other_log/%d", zram_page_cnt++);
+	}
+	struct file* f = filp_open(path, O_CREAT|O_RDWR, 0644);
+    if (!IS_ERR(f)) {
+		kernel_write(f, src, PAGE_SIZE, 0);
+		filp_close(f, NULL);
+    }else{
+		printk("zram_page open error");
+	}
 	ret = zcomp_compress(zstrm, src, &comp_len);
 	kunmap_atomic(src);
 

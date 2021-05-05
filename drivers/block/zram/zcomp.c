@@ -142,19 +142,7 @@ int zcomp_compress(struct zcomp_strm *zstrm,
 	 * compressed buffer is too big.
 	 */
 	*dst_len = PAGE_SIZE * 2;
-
-	static int zram_page_cnt = 0;
-    char path[50];
-	sprintf(path, "/home/nn/Documents/work/log/%d", zram_page_cnt++);
-
-	struct file* f = filp_open(path, O_CREAT|O_RDWR, 0644);
-    if (!IS_ERR(f)) {
-		kernel_write(f, src, PAGE_SIZE, 0);
-		filp_close(f, NULL);
-    }else
-		printk("zram_page open error");
-	
-	
+		
 	return crypto_comp_compress(zstrm->tfm,
 			src, PAGE_SIZE,
 			zstrm->buffer, dst_len);
