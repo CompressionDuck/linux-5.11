@@ -122,6 +122,9 @@ enum pageflags {
 	PG_reclaim,		/* To be reclaimed asap */
 	PG_swapbacked,		/* Page is backed by RAM/swap */
 	PG_unevictable,		/* Page is "unevictable"  */
+	PG_Swap,
+	PG_Anon,
+	PG_Wp,
 #ifdef CONFIG_MMU
 	PG_mlocked,		/* Page is vma mlocked */
 #endif
@@ -342,6 +345,15 @@ PAGEFLAG(Workingset, workingset, PF_HEAD)
 __PAGEFLAG(Slab, slab, PF_NO_TAIL)
 __PAGEFLAG(SlobFree, slob_free, PF_NO_TAIL)
 PAGEFLAG(Checked, checked, PF_NO_COMPOUND)	   /* Used by some filesystems */
+
+PAGEFLAG(SWAP, Swap, PF_HEAD) __CLEARPAGEFLAG(SWAP, Swap, PF_HEAD)
+	TESTCLEARFLAG(SWAP, Swap, PF_HEAD)
+
+PAGEFLAG(ANON, Anon, PF_HEAD) __CLEARPAGEFLAG(ANON, Anon, PF_HEAD)
+	TESTCLEARFLAG(ANON, Anon, PF_HEAD)
+
+PAGEFLAG(WP, Wp, PF_HEAD) __CLEARPAGEFLAG(WP, Wp, PF_HEAD)
+	TESTCLEARFLAG(WP, Wp, PF_HEAD)
 
 /* Xen */
 PAGEFLAG(Pinned, pinned, PF_NO_COMPOUND)

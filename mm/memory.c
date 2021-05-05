@@ -3093,6 +3093,7 @@ static vm_fault_t do_wp_page(struct vm_fault *vmf)
 	}
 
 	vmf->page = vm_normal_page(vma, vmf->address, vmf->orig_pte);
+	SetPageWP(vmf->page);
 	if (!vmf->page) {
 		/*
 		 * VM_MIXEDMAP !pfn_valid() case, or VM_SOFTDIRTY clear on a
@@ -3285,6 +3286,8 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 
 	delayacct_set_flag(DELAYACCT_PF_SWAPIN);
 	page = lookup_swap_cache(entry, vma, vmf->address);
+	SetPageSWAP(page);
+
 	swapcache = page;
 
 	if (!page) {
@@ -3533,6 +3536,7 @@ static vm_fault_t do_anonymous_page(struct vm_fault *vmf)
 	if (unlikely(anon_vma_prepare(vma)))
 		goto oom;
 	page = alloc_zeroed_user_highpage_movable(vma, vmf->address);
+	SetPageANON(page);
 	if (!page)
 		goto oom;
 
