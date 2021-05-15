@@ -36,8 +36,6 @@
 #include <linux/part_stat.h>
 
 #include "zram_drv.h"
-#include "hash_table.h"
-struct zram_same_page *zram_hash_table = NULL;
 
 static DEFINE_IDR(zram_index_idr);
 /* idr index must be protected */
@@ -138,24 +136,6 @@ static void zram_set_obj_size(struct zram *zram,
 	unsigned long flags = zram->table[index].flags >> ZRAM_FLAG_SHIFT;
 
 	zram->table[index].flags = (flags << ZRAM_FLAG_SHIFT) | size;
-}
-
-static void zram_inc_cnt(struct zram *zram, u32 index)
-{
-	zram->table[index].cnt++;
-}
-
-static void zram_dec_cnt(struct zram *zram, u32 index)
-{
-	zram->table[index].cnt--;
-}
-
-static void zram_set_cnt(struct zram *zram, u32 index, unsigned long cnt){
-	zram->table[index].cnt = cnt;
-}
-
-static int zram_zero_cnt(struct zram *zram, u32 index){
-	return zram->table[index].cnt == 0;
 }
 
 static inline bool zram_allocated(struct zram *zram, u32 index)
@@ -1224,22 +1204,6 @@ static void zram_free_page(struct zram *zram, size_t index)
 		goto out;
 	}
 
-	/*
-	 * No memory is allocated for hash same pages.
-	 * if cnt decrease to 0, clear hash same flag.
-	 */
-	//TODO
-	if(zram_test_flag(zram, index, ZRAM_HASH_SAME)){
-		zram_dec_cnt(zram, index);
-		atomic64_dec(&zram->stats.hash_same_pages);
-		if(zram_zero_cnt(zram, index)){
-			zram_clear_flag(zram, index, ZRAM_HASH_SAME);
-			goto out;
-		}
-		// if cnt > 0, don't clear handle and obj_size
-		goto hash_out;
-	}
-
 	handle = zram_get_handle(zram, index);
 	if (!handle)
 		return;
@@ -1252,7 +1216,6 @@ out:
 	atomic64_dec(&zram->stats.pages_stored);
 	zram_set_handle(zram, index, 0);
 	zram_set_obj_size(zram, index, 0);
-hash_out:
 	WARN_ON_ONCE(zram->table[index].flags &
 		~(1UL << ZRAM_LOCK | 1UL << ZRAM_UNDER_WB));
 }
@@ -1366,9 +1329,6 @@ static int __zram_bvec_write(struct zram *zram, struct bio_vec *bvec,
 	unsigned long element = 0;
 	enum zram_pageflags flags = 0;
 
-	char tmp_digest[DIGEST_LEN];
-	struct zram_same_page *hash_page = NULL;
-
 	mem = kmap_atomic(page);
 	if (page_same_filled(mem, &element)) {
 		kunmap_atomic(mem);
@@ -1377,23 +1337,8 @@ static int __zram_bvec_write(struct zram *zram, struct bio_vec *bvec,
 		atomic64_inc(&zram->stats.same_pages);
 		goto out;
 	}
-	
-	//TODO extern zram_hash_table
-	do_sha256(mem, tmp_digest);
-    HASH_FIND_STR(zram_hash_table, tmp_digest, hash_page);
-	if(hash_page){
-		flags = ZRAM_HASH_SAME;
-		atomic64_inc(&zram->stats.hash_same_pages);
-		goto out;
-	}
 	kunmap_atomic(mem);
-	
-	hash_page = kzalloc(sizeof(struct zram_same_page), GFP_KERNEL);
-	if(hash_page < 0)
-		return -ENOMEM;
-	strcpy(hash_page->digest, tmp_digest);
-	HASH_ADD_STR(zram_hash_table, digest, hash_page);
-	
+
 compress_again:
 	zstrm = zcomp_stream_get(zram->comp);
 	src = kmap_atomic(page);
@@ -1474,16 +1419,10 @@ out:
 		atomic64_inc(&zram->stats.huge_pages_since);
 	}
 
-	if (flags == ZRAM_SAME) {
+	if (flags) {
 		zram_set_flag(zram, index, flags);
 		zram_set_element(zram, index, element);
-	} else if(flags == ZRAM_HASH_SAME){
-		zram_set_flag(zram, index, flags);
-		zram_set_handle(zram, index, hash_page->handle);
-		zram_inc_cnt(zram, index);
-	} else {
-		hash_page->handle = handle;
-		zram_set_cnt(zram, index, 1);
+	}  else {
 		zram_set_handle(zram, index, handle);
 		zram_set_obj_size(zram, index, comp_len);
 	}
@@ -2150,8 +2089,8 @@ static void destroy_devices(void)
 
 static int __init zram_init(void)
 {
-	int ret;
 	printk(KERN_NOTICE"---Zram module inits--- \n");
+	int ret;
 
 	ret = cpuhp_setup_state_multi(CPUHP_ZCOMP_PREPARE, "block/zram:prepare",
 				      zcomp_cpu_up_prepare, zcomp_cpu_dead);
