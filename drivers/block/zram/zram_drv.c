@@ -1380,13 +1380,14 @@ static int __zram_bvec_write(struct zram *zram, struct bio_vec *bvec,
 	
 	//TODO extern zram_hash_table
 	do_sha256(mem, tmp_digest);
+	kunmap_atomic(mem);
     HASH_FIND_STR(zram_hash_table, tmp_digest, hash_page);
 	if(hash_page){
 		flags = ZRAM_HASH_SAME;
 		atomic64_inc(&zram->stats.hash_same_pages);
 		goto out;
 	}
-	kunmap_atomic(mem);
+	
 	
 	hash_page = kzalloc(sizeof(struct zram_same_page), GFP_KERNEL);
 	if(hash_page < 0)
