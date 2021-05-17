@@ -37,7 +37,6 @@
 
 #include "zram_drv.h"
 #include "zram_hashtable.h"
-extern struct hash_table hashtable;
 
 static DEFINE_IDR(zram_index_idr);
 /* idr index must be protected */
@@ -143,6 +142,11 @@ static void zram_set_obj_size(struct zram *zram,
 static void zram_set_node(struct zram *zram, u32 index, struct Node* node)
 {
 	zram->table[index].node = node;
+}
+
+static void zram_clear_node(struct zram *zram, u32 index)
+{
+	zram->table[index].node = NULL;
 }
 
 static struct Node* zram_get_node(struct zram *zram, u32 index)
@@ -1227,9 +1231,10 @@ static void zram_free_page(struct zram *zram, size_t index)
 		node = zram_get_node(zram, index);
 		update_node(node, CNT_DEC);
 		atomic64_dec(&zram->stats.hash_same_pages);
-		if(node->cnt)
+		if(node == NULL){
+			zram_clear_node(zram, index);
 			goto out;
-		del_Node(node);
+		}
 	}
 
 	handle = zram_get_handle(zram, index);
@@ -2182,7 +2187,7 @@ out_error:
 static void __exit zram_exit(void)
 {
 	printk(KERN_NOTICE"---Zram module exits--- \n");
-
+	free_hashtable();
 	destroy_devices();
 }
 

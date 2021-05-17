@@ -1,13 +1,50 @@
 #include "zram_hashtable.h"
 #include "zram_sha256.h"
+#include <linux/slab.h>
 
+static struct hash_table hashtable;
 
-struct hash_table hashtable;
+struct Node  *alloc_Node(void){
+    struct Node *node = kzalloc(sizeof(*node), GFP_KERNEL);
+	if(!node){
+        pr_err("zram: can't kzalloc hash node");
+        return NULL;
+    }
+    node->ref = 1;
+    INIT_LIST_HEAD(&node->list);
+    hashtable.cnt++;
+    return node;
+}
 
-struct Node * find_or_add_node(void* src, char* is_find_node)
+struct Head *alloc_Head(void){
+    struct Head *head = kzalloc(sizeof(*head), GFP_KERNEL);
+    if(!head){
+        pr_err("zram: can't kzalloc hash head");
+        return NULL;
+    }
+    INIT_LIST_HEAD(&head->head);
+    return head;
+}
+
+struct Node *del_LFU(void){
+    struct Head *min_head;
+    struct list_head *list;
+    HASH_FIND_INT(hashtable.head_table, &hashtable.min_ref, min_head);
+    if(min_head == NULL){
+        pr_err("zram: del_LFU error");
+        return NULL;
+    }
+    list = min_head->head.prev;
+    list_del(list);
+    return list_entry(list, struct Node, list);
+}
+
+struct Node *find_or_add_node(void* src, char* is_find_node)
 {
     struct Node *node = NULL;
+    struct Head* one_head;
     char tmp_digest[DIGEST_LEN];
+
     do_sha256(src, tmp_digest);
     HASH_FIND_STR(hashtable.node_table, tmp_digest, node);
     if(node){
@@ -16,69 +53,85 @@ struct Node * find_or_add_node(void* src, char* is_find_node)
         return node;
     }
 
-    node = kmalloc(sizeof(struct zram_same_page), GFP_KERNEL);
-	if(node < 0){
-        pr_err("zram: can't kzalloc hash node");
+    if(hashtable.cnt >= CAPACITY)
+        node = del_LFU();
+    else
+        node = alloc_Node();
+    if(node == NULL)
         return NULL;
-    }
-    node->cnt = 1;
-    node->comp_len = 0;
-    node->pre = node->next = NULL; 
 
+    node->ref = 1;
+    node->handle = node->comp_len = 0;
 	strcpy(node->digest, tmp_digest);
+    
+    HASH_FIND_INT(hashtable.head_table, &node->ref, one_head);
+
+    list_add(&node->list, &one_head->head);
+    hashtable.min_ref = 1;
+
 	HASH_ADD_STR(hashtable.node_table, digest, node);
+
     *is_find_node = 0;
     return node;
 }
 
-void cut_node(struct Node* node){
-    node->pre->next = node->next;
-    node->next->pre = node->pre;
-}
-
-void add_after_head(struct Head* head, struct Node* node){
-    node->next = head->next;
-    node->pre = head;
-    head->next->pre = node;
-    head->next = node;
-}
-
-inline static int head_empty(struct Head* head)
+void free_node(struct Node* node)
 {
-    return head->next == head;
+    HASH_DEL(hashtable.node_table, node);
+    hashtable.cnt--;
+    kfree(node);
 }
 
+//TODO update use
 void update_node(struct Node *node, char is_inc)
 {
-    struct Head* head;
-    if(is_inc && hashtable.min_cnt == node->cnt){
-        HASH_FIND_INT(hashtable.head_table, &node->cnt, head);
-        if(head->pre == node)
-            hashtable.min_cnt++;
+    struct Head* head = NULL;
+    if(is_inc && hashtable.min_ref == node->ref){
+        HASH_FIND_INT(hashtable.head_table, &node->ref, head);
+        if(list_is_last(&node->list, &head->head))
+            hashtable.min_ref++;
     }
-    node->cnt = is_inc? node->cnt+1 : node->cnt-1;
-    
-    cut_node(node);
-    HASH_FIND_INT(hashtable.head_table, &node->cnt, head);
+
+    list_del(&node->list);
+
+    node->ref = is_inc? node->ref+1 : node->ref-1;
+    if(node->ref == 0){
+        free_node(node);
+        return ;
+    }
+
+    HASH_FIND_INT(hashtable.head_table, &node->ref, head);
     if(!head){
-        head = kmalloc(sizeof(struct Head), GFP_KERNEL);
-        head->cnt = node->cnt;
-        head->pre = head->next = head;
+        head = alloc_Head();
+        if(head == NULL)
+            return ;
+        head->ref = node->ref;
     }
-    if(!is_inc && head_empty(head))
-        hashtable.min_cnt = head->cnt;
-    add_after_head(head, node);
+    if(!is_inc && list_empty(&head->head))
+        hashtable.min_ref = head->ref;
+    list_add(&node->list, &head->head);
 }
 
-void del_Node(struct Node* node)
-{
-    cut_node(node);
-    HASH_DEL(hashtable.node_table, node);
-}
-
-void init_zram_hashtable()
+void init_zram_hashtable(void)
 {
     hashtable.node_table = NULL;
     hashtable.head_table = NULL;
-    hashtable.min_cnt = 0;
+    hashtable.min_ref = 1;
+    hashtable.cnt = 0;
+}
+
+void free_hashtable(void)
+{
+    struct Node* node, *tmp_node;
+    struct Head* head, *tmp_head;
+    HASH_ITER(hh, hashtable.node_table, node, tmp_node){
+        HASH_DEL(hashtable.node_table, node);
+        kfree(node);
+    }
+    hashtable.cnt = 0;
+
+    HASH_ITER(hh, hashtable.head_table, head, tmp_head){
+        HASH_DEL(hashtable.head_table, head);
+        kfree(head);
+    }
 }

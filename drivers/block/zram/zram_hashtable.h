@@ -1,7 +1,7 @@
 #ifndef _ZRAM_HASHTABLE_H
 #define _ZRAM_HASHTABLE_H
 
-#include <linux/hashtable.h>
+#include <linux/list.h>
 #include "uthash.h"
 #define DIGEST_LEN  257
 #define CAPACITY    1000    
@@ -11,17 +11,17 @@
 struct Node
 {
     unsigned char digest[DIGEST_LEN];
+    unsigned long ref;
     unsigned long handle;
-    unsigned long cnt;
     unsigned long comp_len;
-    struct Node* pre, *next;
+    struct list_head list;
     UT_hash_handle hh;
 };
 
 struct Head
 {
-    unsigned long cnt;
-    struct Node* pre, *next;
+    unsigned long ref;
+    struct list_head head;
     UT_hash_handle hh;
 };
 
@@ -29,13 +29,14 @@ struct hash_table
 {
     struct Node* node_table;
     struct Head* head_table;
-    unsigned long min_cnt;
+    unsigned long min_ref;
+    unsigned long cnt;
 };
 
 
 struct Node * find_or_add_node(void* src, char* is_find_node);
 void update_node(struct Node *node, char is_inc);
-void del_Node(struct Node*);
 void init_zram_hashtable(void);
+void free_hashtable(void);
 
 #endif
