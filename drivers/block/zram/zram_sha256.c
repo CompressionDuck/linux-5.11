@@ -1,4 +1,4 @@
-#include "hash_table.h"
+#include <crypto/hash.h>
 
 struct sdesc {
     struct shash_desc shash;

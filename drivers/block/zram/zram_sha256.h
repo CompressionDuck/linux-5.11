@@ -1,0 +1,1 @@
+int do_sha256(const unsigned char *data, unsigned char *out_digest);

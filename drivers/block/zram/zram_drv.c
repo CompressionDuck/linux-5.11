@@ -36,8 +36,8 @@
 #include <linux/part_stat.h>
 
 #include "zram_drv.h"
-#include "hash_table.h"
-struct zram_same_page *zram_hash_table = NULL;
+#include "zram_hashtable.h"
+extern struct hash_table hashtable;
 
 static DEFINE_IDR(zram_index_idr);
 /* idr index must be protected */
@@ -140,22 +140,14 @@ static void zram_set_obj_size(struct zram *zram,
 	zram->table[index].flags = (flags << ZRAM_FLAG_SHIFT) | size;
 }
 
-static void zram_inc_cnt(struct zram *zram, u32 index)
+static void zram_set_node(struct zram *zram, u32 index, struct Node* node)
 {
-	zram->table[index].cnt++;
+	zram->table[index].node = node;
 }
 
-static void zram_dec_cnt(struct zram *zram, u32 index)
+static struct Node* zram_get_node(struct zram *zram, u32 index)
 {
-	zram->table[index].cnt--;
-}
-
-static void zram_set_cnt(struct zram *zram, u32 index, unsigned long cnt){
-	zram->table[index].cnt = cnt;
-}
-
-static int zram_zero_cnt(struct zram *zram, u32 index){
-	return zram->table[index].cnt == 0;
+	return zram->table[index].node;
 }
 
 static inline bool zram_allocated(struct zram *zram, u32 index)
@@ -1196,6 +1188,7 @@ static bool zram_meta_alloc(struct zram *zram, u64 disksize)
 static void zram_free_page(struct zram *zram, size_t index)
 {
 	unsigned long handle;
+	struct Node* node;
 
 #ifdef CONFIG_ZRAM_MEMORY_TRACKING
 	zram->table[index].ac_time = 0;
@@ -1230,14 +1223,13 @@ static void zram_free_page(struct zram *zram, size_t index)
 	 */
 	//TODO
 	if(zram_test_flag(zram, index, ZRAM_HASH_SAME)){
-		zram_dec_cnt(zram, index);
+		zram_clear_flag(zram, index, ZRAM_HASH_SAME);
+		node = zram_get_node(zram, index);
+		update_node(node, CNT_DEC);
 		atomic64_dec(&zram->stats.hash_same_pages);
-		if(zram_zero_cnt(zram, index)){
-			zram_clear_flag(zram, index, ZRAM_HASH_SAME);
+		if(node->cnt)
 			goto out;
-		}
-		// if cnt > 0, don't clear handle and obj_size
-		goto hash_out;
+		del_Node(node);
 	}
 
 	handle = zram_get_handle(zram, index);
@@ -1252,7 +1244,6 @@ out:
 	atomic64_dec(&zram->stats.pages_stored);
 	zram_set_handle(zram, index, 0);
 	zram_set_obj_size(zram, index, 0);
-hash_out:
 	WARN_ON_ONCE(zram->table[index].flags &
 		~(1UL << ZRAM_LOCK | 1UL << ZRAM_UNDER_WB));
 }
@@ -1366,8 +1357,8 @@ static int __zram_bvec_write(struct zram *zram, struct bio_vec *bvec,
 	unsigned long element = 0;
 	enum zram_pageflags flags = 0;
 
-	char tmp_digest[DIGEST_LEN];
-	struct zram_same_page *hash_page = NULL;
+	struct Node *node = NULL;
+	char is_find_node = 0;
 
 	mem = kmap_atomic(page);
 	if (page_same_filled(mem, &element)) {
@@ -1378,22 +1369,16 @@ static int __zram_bvec_write(struct zram *zram, struct bio_vec *bvec,
 		goto out;
 	}
 	
-	//TODO extern zram_hash_table
-	do_sha256(mem, tmp_digest);
+	node = find_or_add_node(mem, &is_find_node);
 	kunmap_atomic(mem);
-    HASH_FIND_STR(zram_hash_table, tmp_digest, hash_page);
-	if(hash_page){
+	if(node == NULL)
+		return -ENOMEM;
+	
+	if(is_find_node){
 		flags = ZRAM_HASH_SAME;
 		atomic64_inc(&zram->stats.hash_same_pages);
 		goto out;
 	}
-	
-	
-	hash_page = kzalloc(sizeof(struct zram_same_page), GFP_KERNEL);
-	if(hash_page < 0)
-		return -ENOMEM;
-	strcpy(hash_page->digest, tmp_digest);
-	HASH_ADD_STR(zram_hash_table, digest, hash_page);
 	
 compress_again:
 	zstrm = zcomp_stream_get(zram->comp);
@@ -1480,11 +1465,13 @@ out:
 		zram_set_element(zram, index, element);
 	} else if(flags == ZRAM_HASH_SAME){
 		zram_set_flag(zram, index, flags);
-		zram_set_handle(zram, index, hash_page->handle);
-		zram_inc_cnt(zram, index);
+		zram_set_node(zram, index, node);
+		zram_set_handle(zram, index, node->handle);
+		zram_set_obj_size(zram, index, node->comp_len);
 	} else {
-		hash_page->handle = handle;
-		zram_set_cnt(zram, index, 1);
+		zram_set_node(zram, index, node);
+		node->handle = handle;
+		node->comp_len = comp_len;
 		zram_set_handle(zram, index, handle);
 		zram_set_obj_size(zram, index, comp_len);
 	}
@@ -2152,6 +2139,7 @@ static void destroy_devices(void)
 static int __init zram_init(void)
 {
 	int ret;
+	init_zram_hashtable();
 	printk(KERN_NOTICE"---Zram module inits--- \n");
 
 	ret = cpuhp_setup_state_multi(CPUHP_ZCOMP_PREPARE, "block/zram:prepare",
