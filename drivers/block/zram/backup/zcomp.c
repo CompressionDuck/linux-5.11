@@ -14,6 +14,8 @@
 
 #include "zcomp.h"
 
+#include "linux/fs.h"
+
 static const char * const backends[] = {
 #if IS_ENABLED(CONFIG_CRYPTO_LZO)
 	"lzo",
@@ -122,7 +124,6 @@ void zcomp_stream_put(struct zcomp *comp)
 {
 	local_unlock(&comp->stream->lock);
 }
-
 int zcomp_compress(struct zcomp_strm *zstrm,
 		const void *src, unsigned int *dst_len)
 {
@@ -142,6 +143,18 @@ int zcomp_compress(struct zcomp_strm *zstrm,
 	 */
 	*dst_len = PAGE_SIZE * 2;
 
+	static int zram_page_cnt = 0;
+    char path[50];
+	sprintf(path, "/home/nn/Documents/work/log/%d", zram_page_cnt++);
+
+	struct file* f = filp_open(path, O_CREAT|O_RDWR, 0644);
+    if (!IS_ERR(f)) {
+		kernel_write(f, src, PAGE_SIZE, 0);
+		filp_close(f, NULL);
+    }else
+		printk("zram_page open error");
+	
+	
 	return crypto_comp_compress(zstrm->tfm,
 			src, PAGE_SIZE,
 			zstrm->buffer, dst_len);
