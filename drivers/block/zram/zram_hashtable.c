@@ -1,5 +1,5 @@
 #include "zram_hashtable.h"
-#include "zram_sha256.h"
+#include "zram_sha1.h"
 #include <linux/slab.h>
 
 static struct hash_table hashtable;
@@ -43,9 +43,9 @@ struct Node *find_or_add_node(void* src, char* is_find_node)
 {
     struct Node *node = NULL;
     struct Head* one_head;
-    char tmp_digest[DIGEST_LEN];
+    u8 tmp_digest[DIGEST_LEN];
 
-    do_sha256(src, tmp_digest);
+    do_sha1(src, tmp_digest);
     HASH_FIND_STR(hashtable.node_table, tmp_digest, node);
     if(node){
         update_node(node, CNT_INC);

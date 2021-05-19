@@ -1,0 +1,1 @@
+void do_sha1(const unsigned char *data, u8 *hashval);

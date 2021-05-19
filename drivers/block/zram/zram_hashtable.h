@@ -3,7 +3,7 @@
 
 #include <linux/list.h>
 #include "uthash.h"
-#define DIGEST_LEN  257
+#define DIGEST_LEN  20
 #define CAPACITY    1000    
 #define CNT_INC     1
 #define CNT_DEC     0

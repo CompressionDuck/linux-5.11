@@ -1227,6 +1227,7 @@ static void zram_free_page(struct zram *zram, size_t index)
 	 */
 	//TODO
 	if(zram_test_flag(zram, index, ZRAM_HASH_SAME)){
+		
 		zram_clear_flag(zram, index, ZRAM_HASH_SAME);
 		node = zram_get_node(zram, index);
 		update_node(node, CNT_DEC);
