@@ -44,8 +44,11 @@ struct Node *find_or_add_node(void* src, char* is_find_node)
     struct Node *node = NULL;
     struct Head* one_head;
     u8 tmp_digest[DIGEST_LEN];
+    int ret;
 
-    do_sha1(src, tmp_digest);
+    ret = do_sha1(src, tmp_digest);
+    if(ret < 0)
+        return ERR_PTR(ret);
     HASH_FIND_STR(hashtable.node_table, tmp_digest, node);
     if(node){
         update_node(node, CNT_INC);
@@ -62,7 +65,7 @@ struct Node *find_or_add_node(void* src, char* is_find_node)
 
     node->ref = 1;
     node->handle = node->comp_len = 0;
-	strcpy(node->digest, tmp_digest);
+	memcpy(node->digest, tmp_digest, DIGEST_LEN);
     
     HASH_FIND_INT(hashtable.head_table, &node->ref, one_head);
 
