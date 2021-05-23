@@ -1,4 +1,6 @@
 #include "hash_table.h"
+#include <crypto/hash.h>
+#include <linux/scatterlist.h>
 
 struct sdesc {
     struct shash_desc shash;
@@ -36,10 +38,10 @@ static int calc_hash(struct crypto_shash *alg,
     return ret;
 }
 
-int do_sha256(const unsigned char *data, unsigned char *out_digest)
+int do_hash(const unsigned char *data, unsigned char *out_digest)
 {
     struct crypto_shash *alg;
-    char *hash_alg_name = "sha256";
+    char *hash_alg_name = "sha1";
     //unsigned int datalen = sizeof(data) - 1; // remove the null byte
     unsigned int datalen = PAGE_SIZE;
 
@@ -51,12 +53,12 @@ int do_sha256(const unsigned char *data, unsigned char *out_digest)
     calc_hash(alg, data, datalen, out_digest);
 
     // Very dirty print of 8 first bytes for comparaison with sha256sum
-    printk(KERN_INFO "HASH(%s, %i): %02x%02x%02x%02x%02x%02x%02x%02x\n",
-          data, datalen, out_digest[0], out_digest[1], out_digest[2], out_digest[3], out_digest[4], 
-          out_digest[5], out_digest[6], out_digest[7]);
+    // printk(KERN_INFO "HASH(%s, %i): %02x%02x%02x%02x%02x%02x%02x%02x\n",
+    //       data, datalen, out_digest[0], out_digest[1], out_digest[2], out_digest[3], out_digest[4], 
+    //       out_digest[5], out_digest[6], out_digest[7]);
 
     crypto_free_shash(alg);
 
-    out_digest[256] = 0;
+    out_digest[DIGEST_LEN-1] = 0;
     return 0;
 }

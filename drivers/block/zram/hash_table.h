@@ -1,8 +1,5 @@
-#include <linux/module.h>
 #include "uthash.h"
-#include <crypto/hash.h>
-#include <linux/types.h>
-#define DIGEST_LEN 257
+#define DIGEST_LEN (20+1)
 
 struct zram_same_page{
     unsigned char digest[DIGEST_LEN];
@@ -12,4 +9,4 @@ struct zram_same_page{
     UT_hash_handle hh;
 };
 
-int do_sha256(const unsigned char *data, unsigned char *out_digest);
+int do_hash(const unsigned char *data, unsigned char *out_digest);

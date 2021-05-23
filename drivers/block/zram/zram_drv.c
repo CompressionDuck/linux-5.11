@@ -1392,7 +1392,7 @@ static int __zram_bvec_write(struct zram *zram, struct bio_vec *bvec,
 		goto out;
 	}
 	
-	do_sha256(mem, tmp_digest);
+	do_hash(mem, tmp_digest);
 	kunmap_atomic(mem);
     HASH_FIND_STR(zram_hash_table, tmp_digest, hash_page);
 	if(hash_page){
