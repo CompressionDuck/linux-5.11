@@ -108,10 +108,7 @@ static void zram_clear_flag(struct zram *zram, u32 index,
 
 static unsigned long zram_get_handle(struct zram *zram, u32 index)
 {
-	if(zram_test_flag(zram, index, ZRAM_HASH_SAME))
-		return zram->table[index].hash->handle;
-	else
-		return zram->table[index].handle;
+	return zram->table[index].handle;
 }
 
 static void zram_set_handle(struct zram *zram, u32 index, unsigned long handle)
@@ -1242,12 +1239,11 @@ static void zram_free_page(struct zram *zram, size_t index)
 	 * No memory is allocated for hash same pages.
 	 * if cnt decrease to 0, clear hash same flag.
 	 */
-	//TODO
 	if(zram_test_flag(zram, index, ZRAM_HASH_SAME)){
+		atomic64_dec(&zram->stats.hash_same_pages);
+		zram_clear_flag(zram, index, ZRAM_HASH_SAME);
 		zram_dec_cnt(zram, index);
 		if(zram_zero_cnt(zram, index)){
-			atomic64_dec(&zram->stats.hash_same_pages);
-			zram_clear_flag(zram, index, ZRAM_HASH_SAME);
 			hash_page = zram_get_hash(zram, index);
 			HASH_DEL(zram_hash_table, hash_page);
 			kfree(hash_page);

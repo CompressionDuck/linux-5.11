@@ -121,9 +121,13 @@ do {                                                                            
 // #define uthash_fatal(msg) exit(-1)        /* fatal OOM error */
 // #endif
 
-// #define HASH_RECORD_OOM(oomed) uthash_fatal("out of memory")
+#ifndef uthash_fatal
+#define uthash_fatal(msg) return -ENOMEM        /* fatal OOM error */
+#endif
+
+#define HASH_RECORD_OOM(oomed) uthash_fatal("out of memory")
 // #define STR_ERR ()
-#define HASH_RECORD_OOM(oomed) printk("out of memory")
+// #define HASH_RECORD_OOM(oomed) printk("out of memory")
 #define IF_HASH_NONFATAL_OOM(x)
 
 #endif
