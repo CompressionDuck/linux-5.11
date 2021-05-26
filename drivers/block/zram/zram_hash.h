@@ -1,0 +1,1 @@
+int do_hash(const unsigned char *data, unsigned char *digest);

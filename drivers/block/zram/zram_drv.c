@@ -1225,17 +1225,15 @@ static void zram_free_page(struct zram *zram, size_t index)
 	 * No memory is allocated for hash same pages.
 	 * if cnt decrease to 0, clear hash same flag.
 	 */
-	//TODO
 	if(zram_test_flag(zram, index, ZRAM_HASH_SAME)){
-		
 		zram_clear_flag(zram, index, ZRAM_HASH_SAME);
+		atomic64_dec(&zram->stats.hash_same_pages);
+
 		node = zram_get_node(zram, index);
 		update_node(node, CNT_DEC);
-		atomic64_dec(&zram->stats.hash_same_pages);
-		if(node == NULL){
-			zram_clear_node(zram, index);
+		zram_clear_node(zram, index);
+		if(node)
 			goto out;
-		}
 	}
 
 	handle = zram_get_handle(zram, index);
@@ -1381,6 +1379,7 @@ static int __zram_bvec_write(struct zram *zram, struct bio_vec *bvec,
 		return -ENOMEM;
 	
 	if(is_find_node){
+		pr_info("get same hash page: %p", node);
 		flags = ZRAM_HASH_SAME;
 		atomic64_inc(&zram->stats.hash_same_pages);
 		goto out;
@@ -1471,13 +1470,14 @@ out:
 		zram_set_element(zram, index, element);
 	} else if(flags == ZRAM_HASH_SAME){
 		zram_set_flag(zram, index, flags);
-		zram_set_node(zram, index, node);
 		zram_set_handle(zram, index, node->handle);
 		zram_set_obj_size(zram, index, node->comp_len);
-	} else {
 		zram_set_node(zram, index, node);
+		update_node(node, CNT_INC);
+	} else {
 		node->handle = handle;
 		node->comp_len = comp_len;
+		zram_set_node(zram, index, node);
 		zram_set_handle(zram, index, handle);
 		zram_set_obj_size(zram, index, comp_len);
 	}
@@ -2145,7 +2145,6 @@ static void destroy_devices(void)
 static int __init zram_init(void)
 {
 	int ret;
-	init_zram_hashtable();
 	printk(KERN_NOTICE"---Zram module inits--- \n");
 
 	ret = cpuhp_setup_state_multi(CPUHP_ZCOMP_PREPARE, "block/zram:prepare",

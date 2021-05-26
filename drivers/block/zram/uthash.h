@@ -82,7 +82,8 @@ do {                                                                            
 #define uthash_bzero(a,n) memset(a,'\0',n)
 #endif
 #ifndef uthash_strlen
-#define uthash_strlen(s) strlen(s)
+// #define uthash_strlen(s) strlen(s)
+#define uthash_strlen(s)  20
 #endif
 
 #ifndef HASH_FUNCTION
