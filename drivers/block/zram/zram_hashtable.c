@@ -19,7 +19,7 @@ struct Head* scan_min_ref_head(void)
 {
     struct Head *head;
     unsigned long ref;
-    for(ref = 1; ref < CAPACITY; ++ref){
+    for(ref = 1; ref <= CAPACITY; ++ref){
         HASH_FIND_INT(head_table, &ref, head);
         if(head)
             return head;
@@ -32,12 +32,16 @@ struct Head* scan_min_ref_head(void)
 void del_node_list(struct Node *node)
 {
     struct Head *head;
-    list_del(&node->list);
-    HASH_FIND_INT(head_table, &node->ref, head);
-    if(list_empty(&head->head)){
-        HASH_DEL(head_table, head);
-        kfree(head);
-    }
+    if(node->list.next != LIST_POISON1 && node->list.prev != LIST_POISON2){
+        list_del(&node->list);
+
+        HASH_FIND_INT(head_table, &node->ref, head);
+        BUG_ON(head == NULL);
+        if(list_empty(&head->head)){
+            HASH_DEL(head_table, head);
+            kfree(head);
+        }
+    } 
 }
 
 struct Node *del_LFU(void){
@@ -121,7 +125,8 @@ struct Node *find_or_add_node(void* src, char* is_find_node)
     return node;
 }
 
-void update_node(struct Node *node, char is_inc)
+//  return ref after update
+unsigned long update_node(struct Node *node, char is_inc)
 {
     struct Head* head = NULL;
 
@@ -131,11 +136,12 @@ void update_node(struct Node *node, char is_inc)
     if(node->ref == 0){
         HASH_DEL(node_table, node);
         kfree(node);
-        return;
+        return 0;
     }
 
     head = find_or_alloc_head(node->ref);
     list_add(&node->list, &head->head);
+    return node->ref;
 }
 
 void free_hashtable(void)
@@ -143,12 +149,13 @@ void free_hashtable(void)
     struct Node* node, *tmp_node;
     struct Head* head, *tmp_head;
     HASH_ITER(hh, node_table, node, tmp_node){
+        del_node_list(node);
         HASH_DEL(node_table, node);
         kfree(node);
     }
-
-    HASH_ITER(hh, head_table, head, tmp_head){
-        HASH_DEL(head_table, head);
-        kfree(head);
-    }
+    BUG_ON(head_table);
+    // HASH_ITER(hh, head_table, head, tmp_head){
+    //     HASH_DEL(head_table, head);
+    //     kfree(head);
+    // }
 }

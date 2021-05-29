@@ -1091,7 +1091,7 @@ static ssize_t mm_stat_show(struct device *dev,
 	max_used = atomic_long_read(&zram->stats.max_used_pages);
 
 	ret = scnprintf(buf, PAGE_SIZE,
-			"%8llu %8llu %8llu %8lu %8ld %8llu %8lu %8llu %8llu\n",
+			"%8llu %8llu %8llu %8lu %8ld %8llu %8lu %8llu %8llu %8llu\n",
 			orig_size << PAGE_SHIFT,
 			(u64)atomic64_read(&zram->stats.compr_data_size),
 			mem_used << PAGE_SHIFT,
@@ -1100,7 +1100,9 @@ static ssize_t mm_stat_show(struct device *dev,
 			(u64)atomic64_read(&zram->stats.same_pages),
 			pool_stats.pages_compacted,
 			(u64)atomic64_read(&zram->stats.huge_pages),
-			(u64)atomic64_read(&zram->stats.huge_pages_since));
+			(u64)atomic64_read(&zram->stats.huge_pages_since),
+			(u64)atomic64_read(&zram->stats.hash_same_pages)
+			);
 	up_read(&zram->init_lock);
 
 	return ret;
@@ -1230,9 +1232,10 @@ static void zram_free_page(struct zram *zram, size_t index)
 		atomic64_dec(&zram->stats.hash_same_pages);
 
 		node = zram_get_node(zram, index);
-		update_node(node, CNT_DEC);
 		zram_clear_node(zram, index);
-		if(node)
+
+		// if updated ref > 0, don't zs_free the hash same page
+		if(update_node(node, CNT_DEC) > 0)
 			goto out;
 	}
 
@@ -2187,8 +2190,8 @@ out_error:
 static void __exit zram_exit(void)
 {
 	printk(KERN_NOTICE"---Zram module exits--- \n");
-	free_hashtable();
 	destroy_devices();
+	free_hashtable();
 }
 
 module_init(zram_init);

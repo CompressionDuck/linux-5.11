@@ -27,7 +27,7 @@ struct Head
 };
 
 struct Node * find_or_add_node(void* src, char* is_find_node);
-void update_node(struct Node *node, char is_inc);
+unsigned long update_node(struct Node *node, char is_inc);
 void free_hashtable(void);
 
 #endif
