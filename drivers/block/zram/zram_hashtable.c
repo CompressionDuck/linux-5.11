@@ -1,6 +1,9 @@
+#include <linux/slab.h>
+#include <linux/bit_spinlock.h>
+
 #include "zram_hashtable.h"
 #include "zram_hash.h"
-#include <linux/slab.h>
+
 
 struct Node* node_table;
 struct Head* head_table;
@@ -12,6 +15,7 @@ struct Node  *alloc_Node(void){
         pr_err("can't kzalloc hash node");
         return NULL;
     }
+    spin_lock_init(&node->lock);
     INIT_LIST_HEAD(&node->list);
     return node;
 }
@@ -43,7 +47,7 @@ void del_node_list(struct Node *node)
     } 
 }
 
-struct Node *reuse_LFU(void){
+struct Node *reuse_LFU(struct zram *zram){
     struct Node* node;
     struct Head *min_head;
     struct list_head *list;
@@ -60,9 +64,14 @@ struct Node *reuse_LFU(void){
     list = min_head->head.prev;
     node = list_entry(list, struct Node, list);
 
+    bit_spin_lock(ZRAM_LOCK, &zram->table[node->index].flags);
+    zram->table[node->index].node = NULL;
+    // zram->table[node->index].handle = node->handle;
+    // zram->table[node->index].flags &= ~BIT(ZRAM_IN_HASHTABLE);
+    bit_spin_unlock(ZRAM_LOCK, &zram->table[node->index].flags);
+
     del_node_list(node);
     HASH_DEL(node_table, node);
-    node->handle = node->comp_len = 0;
     return node;
 }
 
@@ -86,7 +95,7 @@ struct Head* find_or_alloc_head(unsigned long ref)
     }
 }
 
-struct Node *find_or_alloc_node(void* src, char* is_find_node)
+struct Node *find_or_alloc_node(void* src, char* is_find_node, struct zram *zram, u32 index)
 {
     struct Node *node = NULL;
     struct Head* head;
@@ -106,7 +115,7 @@ struct Node *find_or_alloc_node(void* src, char* is_find_node)
     *is_find_node = 0;
 
     if(HASH_COUNT(node_table) >= CAPACITY){
-        if((node = reuse_LFU()) == NULL)
+        if((node = reuse_LFU(zram)) == NULL)
             node = alloc_Node();
     }else
         node = alloc_Node();
@@ -115,9 +124,9 @@ struct Node *find_or_alloc_node(void* src, char* is_find_node)
         return NULL;
         pr_err("can't alloc node");
     }
-        
 
     node->ref = 1;
+    node->index = index;
 	memcpy(node->digest, tmp_digest, DIGEST_LEN);
     
     head = find_or_alloc_head(node->ref);

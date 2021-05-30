@@ -1257,6 +1257,7 @@ static int __zram_bvec_read(struct zram *zram, struct page *page, u32 index,
 	unsigned int size;
 	void *src, *dst;
 	int ret;
+	struct Node* node;
 
 	zram_slot_lock(zram, index);
 	if (zram_test_flag(zram, index, ZRAM_WB)) {
@@ -1272,6 +1273,8 @@ static int __zram_bvec_read(struct zram *zram, struct page *page, u32 index,
 				bio, partial_io);
 	}
 
+	if((node = zram_get_node(zram, index)))
+		spin_lock(&node->lock);
 	handle = zram_get_handle(zram, index);
 	if (!handle || zram_test_flag(zram, index, ZRAM_SAME)) {
 		unsigned long value;
@@ -1304,6 +1307,8 @@ static int __zram_bvec_read(struct zram *zram, struct page *page, u32 index,
 	}
 	zs_unmap_object(zram->mem_pool, handle);
 	zram_slot_unlock(zram, index);
+	if(node)
+		spin_unlock(&node->lock);
 
 	/* Should NEVER happen. Return bio error if it does. */
 	if (WARN_ON(ret))
@@ -1370,12 +1375,13 @@ static int __zram_bvec_write(struct zram *zram, struct bio_vec *bvec,
 		goto out;
 	}
 	
-	node = find_or_alloc_node(mem, &is_find_node);
+	node = find_or_alloc_node(mem, &is_find_node, zram, index);
 	kunmap_atomic(mem);
 	if(node == NULL)
 		return -ENOMEM;
 	
 	if(is_find_node){
+		// flags = ZRAM_IN_HASHTABLE;
 		pr_info("get same hash page: %p", node);
 		goto out;
 	}
@@ -1464,11 +1470,13 @@ out:
 		zram_set_flag(zram, index, flags);
 		zram_set_element(zram, index, element);
 	} else if(is_find_node){
+		// zram_set_flag(zram, index, flags);
 		zram_set_handle(zram, index, node->handle);
 		zram_set_obj_size(zram, index, node->comp_len);
 		zram_set_node(zram, index, node);
 		update_node(node, CNT_INC);
 	} else {
+		// zram_set_flag(zram, index, flags);
 		node->handle = handle;
 		node->comp_len = comp_len;
 		zram_set_node(zram, index, node);
