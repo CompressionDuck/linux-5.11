@@ -1285,6 +1285,8 @@ static int __zram_bvec_read(struct zram *zram, struct page *page, u32 index,
 				bio, partial_io);
 	}
 
+	if((node = zram_get_node(zram, index)))
+		spin_lock(&node->lock);
 	handle = zram_get_handle(zram, index);
 	if (!handle || zram_test_flag(zram, index, ZRAM_SAME)) {
 		unsigned long value;
@@ -1319,6 +1321,8 @@ static int __zram_bvec_read(struct zram *zram, struct page *page, u32 index,
 	// if(node)
 	// 	spin_unlock(&node->lock);
 	zram_slot_unlock(zram, index);
+	if(node)
+		spin_unlock(&node->lock);
 
 	/* Should NEVER happen. Return bio error if it does. */
 	if (WARN_ON(ret))
@@ -1481,11 +1485,13 @@ out:
 		zram_set_flag(zram, index, flags);
 		zram_set_element(zram, index, element);
 	} else if(is_find_node){
+		// zram_set_flag(zram, index, flags);
 		zram_set_handle(zram, index, node->handle);
 		zram_set_obj_size(zram, index, node->comp_len);
 		zram_set_node(zram, index, node);
 		update_node(node, CNT_INC);
 	} else {
+		// zram_set_flag(zram, index, flags);
 		node->handle = handle;
 		node->comp_len = comp_len;
 		zram_set_node(zram, index, node);
