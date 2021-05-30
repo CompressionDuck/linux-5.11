@@ -4,6 +4,7 @@
 
 struct Node* node_table;
 struct Head* head_table;
+unsigned long CAPACITY = 1024;
 
 struct Node  *alloc_Node(void){
     struct Node *node = kzalloc(sizeof(*node), GFP_KERNEL);
@@ -23,7 +24,7 @@ struct Head* scan_min_ref_head(void)
     if(head)
         return head;
     CAPACITY *= 2;
-    pr_info("capacity of hashtable enlarged to %ul", CAPACITY);
+    pr_info("capacity of hashtable enlarged to %lu", CAPACITY);
     return NULL;
 }
 
@@ -104,10 +105,10 @@ struct Node *find_or_alloc_node(void* src, char* is_find_node)
 
     *is_find_node = 0;
 
-    if(HASH_COUNT(node_table) >= CAPACITY)
+    if(HASH_COUNT(node_table) >= CAPACITY){
         if((node = reuse_LFU()) == NULL)
             node = alloc_Node();
-    else
+    }else
         node = alloc_Node();
         
     if(node == NULL){
@@ -147,7 +148,7 @@ unsigned long update_node(struct Node *node, char is_inc)
 
 void free_hashtable(void)
 {
-    struct Node* node, *tmp_node;
+    // struct Node* node, *tmp_node;
     // struct Head* head, *tmp_head;
     BUG_ON(node_table);
     // HASH_ITER(hh, node_table, node, tmp_node){

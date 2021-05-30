@@ -8,7 +8,6 @@
 #define CNT_INC     1
 #define CNT_DEC     0
 
-unsigned long CAPACITY = 1024;
 struct Node
 {
     // spinlock_t lock;

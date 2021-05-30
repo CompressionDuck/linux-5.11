@@ -1225,8 +1225,7 @@ static void zram_free_page(struct zram *zram, size_t index)
 	 * No memory is allocated for hash same pages.
 	 * if cnt decrease to 0, clear hash same flag.
 	 */
-	zram_get_node(zram, index, node);
-	if(node){
+	if((node = zram_get_node(zram, index))){
 		zram_clear_node(zram, index);
 
 		// if updated ref > 0, don't zs_free the hash same page
