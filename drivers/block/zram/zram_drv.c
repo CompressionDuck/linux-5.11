@@ -69,11 +69,16 @@ static int zram_slot_trylock(struct zram *zram, u32 index)
 static void zram_slot_lock(struct zram *zram, u32 index)
 {
 	bit_spin_lock(ZRAM_LOCK, &zram->table[index].flags);
+	if(zram->table[index].node)
+		spin_lock(&zram->table[index].node->lock);
 }
 
 static void zram_slot_unlock(struct zram *zram, u32 index)
 {
 	bit_spin_unlock(ZRAM_LOCK, &zram->table[index].flags);
+	// if(zram->table[index].node && !spin_trylock(&zram->table[index].node->lock))
+	if(zram->table[index].node)
+		spin_unlock(&zram->table[index].node->lock);
 }
 
 static inline bool init_done(struct zram *zram)
@@ -1091,7 +1096,7 @@ static ssize_t mm_stat_show(struct device *dev,
 	max_used = atomic_long_read(&zram->stats.max_used_pages);
 
 	ret = scnprintf(buf, PAGE_SIZE,
-			"%8llu %8llu %8llu %8lu %8ld %8llu %8lu %8llu %8llu\n",
+			"%8llu %8llu %8llu %8lu %8ld %8llu %8lu %8llu %8llu %8llu\n",
 			orig_size << PAGE_SHIFT,
 			(u64)atomic64_read(&zram->stats.compr_data_size),
 			mem_used << PAGE_SHIFT,
@@ -1100,7 +1105,9 @@ static ssize_t mm_stat_show(struct device *dev,
 			(u64)atomic64_read(&zram->stats.same_pages),
 			pool_stats.pages_compacted,
 			(u64)atomic64_read(&zram->stats.huge_pages),
-			(u64)atomic64_read(&zram->stats.huge_pages_since));
+			(u64)atomic64_read(&zram->stats.huge_pages_since),
+			(u64)atomic64_read(&zram->stats.hash_same_pages)
+			);
 	up_read(&zram->init_lock);
 
 	return ret;
@@ -1229,8 +1236,10 @@ static void zram_free_page(struct zram *zram, size_t index)
 		zram_clear_node(zram, index);
 
 		// if updated ref > 0, don't zs_free the hash same page
-		if(update_node(node, CNT_DEC) > 0)
+		if(update_node(node, CNT_DEC) > 0){
 			goto out;
+			atomic64_dec(&zram->stats.hash_same_pages);
+		}
 	}
 
 	handle = zram_get_handle(zram, index);
@@ -1257,8 +1266,12 @@ static int __zram_bvec_read(struct zram *zram, struct page *page, u32 index,
 	unsigned int size;
 	void *src, *dst;
 	int ret;
+	// struct Node *node;
+	// node = zram_get_node(zram, index);
 
 	zram_slot_lock(zram, index);
+	// if(node)
+	// 	spin_lock(&node->lock);
 	if (zram_test_flag(zram, index, ZRAM_WB)) {
 		struct bio_vec bvec;
 
@@ -1303,6 +1316,8 @@ static int __zram_bvec_read(struct zram *zram, struct page *page, u32 index,
 		zcomp_stream_put(zram->comp);
 	}
 	zs_unmap_object(zram->mem_pool, handle);
+	// if(node)
+	// 	spin_unlock(&node->lock);
 	zram_slot_unlock(zram, index);
 
 	/* Should NEVER happen. Return bio error if it does. */
@@ -1370,12 +1385,14 @@ static int __zram_bvec_write(struct zram *zram, struct bio_vec *bvec,
 		goto out;
 	}
 	
-	node = find_or_alloc_node(mem, &is_find_node);
+	node = find_or_alloc_node(mem, &is_find_node, zram, index);
 	kunmap_atomic(mem);
 	if(node == NULL)
 		return -ENOMEM;
 	
 	if(is_find_node){
+		// flags = ZRAM_IN_HASHTABLE;
+		atomic64_inc(&zram->stats.hash_same_pages);
 		pr_info("get same hash page: %p", node);
 		goto out;
 	}
