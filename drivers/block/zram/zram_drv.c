@@ -1091,7 +1091,7 @@ static ssize_t mm_stat_show(struct device *dev,
 	max_used = atomic_long_read(&zram->stats.max_used_pages);
 
 	ret = scnprintf(buf, PAGE_SIZE,
-			"%8llu %8llu %8llu %8lu %8ld %8llu %8lu %8llu %8llu %8llu\n",
+			"%8llu %8llu %8llu %8lu %8ld %8llu %8lu %8llu %8llu\n",
 			orig_size << PAGE_SHIFT,
 			(u64)atomic64_read(&zram->stats.compr_data_size),
 			mem_used << PAGE_SHIFT,
@@ -1100,9 +1100,7 @@ static ssize_t mm_stat_show(struct device *dev,
 			(u64)atomic64_read(&zram->stats.same_pages),
 			pool_stats.pages_compacted,
 			(u64)atomic64_read(&zram->stats.huge_pages),
-			(u64)atomic64_read(&zram->stats.huge_pages_since),
-			(u64)atomic64_read(&zram->stats.hash_same_pages)
-			);
+			(u64)atomic64_read(&zram->stats.huge_pages_since));
 	up_read(&zram->init_lock);
 
 	return ret;
@@ -1227,11 +1225,8 @@ static void zram_free_page(struct zram *zram, size_t index)
 	 * No memory is allocated for hash same pages.
 	 * if cnt decrease to 0, clear hash same flag.
 	 */
-	if(zram_test_flag(zram, index, ZRAM_HASH_SAME)){
-		zram_clear_flag(zram, index, ZRAM_HASH_SAME);
-		atomic64_dec(&zram->stats.hash_same_pages);
-
-		node = zram_get_node(zram, index);
+	zram_get_node(zram, index, node);
+	if(node){
 		zram_clear_node(zram, index);
 
 		// if updated ref > 0, don't zs_free the hash same page
@@ -1376,15 +1371,13 @@ static int __zram_bvec_write(struct zram *zram, struct bio_vec *bvec,
 		goto out;
 	}
 	
-	node = find_or_add_node(mem, &is_find_node);
+	node = find_or_alloc_node(mem, &is_find_node);
 	kunmap_atomic(mem);
 	if(node == NULL)
 		return -ENOMEM;
 	
 	if(is_find_node){
 		pr_info("get same hash page: %p", node);
-		flags = ZRAM_HASH_SAME;
-		atomic64_inc(&zram->stats.hash_same_pages);
 		goto out;
 	}
 	
@@ -1471,8 +1464,7 @@ out:
 	if (flags == ZRAM_SAME) {
 		zram_set_flag(zram, index, flags);
 		zram_set_element(zram, index, element);
-	} else if(flags == ZRAM_HASH_SAME){
-		zram_set_flag(zram, index, flags);
+	} else if(is_find_node){
 		zram_set_handle(zram, index, node->handle);
 		zram_set_obj_size(zram, index, node->comp_len);
 		zram_set_node(zram, index, node);

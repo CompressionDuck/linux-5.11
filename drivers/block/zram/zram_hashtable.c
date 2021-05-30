@@ -18,14 +18,12 @@ struct Node  *alloc_Node(void){
 struct Head* scan_min_ref_head(void)
 {
     struct Head *head;
-    unsigned long ref;
-    for(ref = 1; ref <= CAPACITY; ++ref){
-        HASH_FIND_INT(head_table, &ref, head);
-        if(head)
-            return head;
-    }
-    
-    pr_err("can't scan the min ref head");
+    unsigned long ref = 1;
+    HASH_FIND_INT(head_table, &ref, head);
+    if(head)
+        return head;
+    CAPACITY *= 2;
+    pr_info("capacity of hashtable enlarged to %ul", CAPACITY);
     return NULL;
 }
 
@@ -44,16 +42,15 @@ void del_node_list(struct Node *node)
     } 
 }
 
-struct Node *del_LFU(void){
+struct Node *reuse_LFU(void){
     struct Node* node;
     struct Head *min_head;
     struct list_head *list;
 
     min_head = scan_min_ref_head();
-    if(min_head == NULL){
-        pr_err("del_LFU error");
+    if(min_head == NULL)
         return NULL;
-    }
+
     if(list_empty(&min_head->head)){
         pr_err("LFU empty list");
         return NULL;
@@ -88,7 +85,7 @@ struct Head* find_or_alloc_head(unsigned long ref)
     }
 }
 
-struct Node *find_or_add_node(void* src, char* is_find_node)
+struct Node *find_or_alloc_node(void* src, char* is_find_node)
 {
     struct Node *node = NULL;
     struct Head* head;
@@ -108,12 +105,16 @@ struct Node *find_or_add_node(void* src, char* is_find_node)
     *is_find_node = 0;
 
     if(HASH_COUNT(node_table) >= CAPACITY)
-        node = del_LFU();
+        if((node = reuse_LFU()) == NULL)
+            node = alloc_Node();
     else
         node = alloc_Node();
         
-    if(node == NULL)
+    if(node == NULL){
         return NULL;
+        pr_err("can't alloc node");
+    }
+        
 
     node->ref = 1;
 	memcpy(node->digest, tmp_digest, DIGEST_LEN);
@@ -147,12 +148,13 @@ unsigned long update_node(struct Node *node, char is_inc)
 void free_hashtable(void)
 {
     struct Node* node, *tmp_node;
-    struct Head* head, *tmp_head;
-    HASH_ITER(hh, node_table, node, tmp_node){
-        del_node_list(node);
-        HASH_DEL(node_table, node);
-        kfree(node);
-    }
+    // struct Head* head, *tmp_head;
+    BUG_ON(node_table);
+    // HASH_ITER(hh, node_table, node, tmp_node){
+    //     del_node_list(node);
+    //     HASH_DEL(node_table, node);
+    //     kfree(node);
+    // }
     BUG_ON(head_table);
     // HASH_ITER(hh, head_table, head, tmp_head){
     //     HASH_DEL(head_table, head);
