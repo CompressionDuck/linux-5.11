@@ -75,10 +75,9 @@ static void zram_slot_lock(struct zram *zram, u32 index)
 
 static void zram_slot_unlock(struct zram *zram, u32 index)
 {
-	bit_spin_unlock(ZRAM_LOCK, &zram->table[index].flags);
-	// if(zram->table[index].node && !spin_trylock(&zram->table[index].node->lock))
 	if(zram->table[index].node)
 		spin_unlock(&zram->table[index].node->lock);
+	bit_spin_unlock(ZRAM_LOCK, &zram->table[index].flags);
 }
 
 static inline bool init_done(struct zram *zram)
@@ -1266,12 +1265,8 @@ static int __zram_bvec_read(struct zram *zram, struct page *page, u32 index,
 	unsigned int size;
 	void *src, *dst;
 	int ret;
-	// struct Node *node;
-	// node = zram_get_node(zram, index);
 
 	zram_slot_lock(zram, index);
-	// if(node)
-	// 	spin_lock(&node->lock);
 	if (zram_test_flag(zram, index, ZRAM_WB)) {
 		struct bio_vec bvec;
 
@@ -1285,8 +1280,6 @@ static int __zram_bvec_read(struct zram *zram, struct page *page, u32 index,
 				bio, partial_io);
 	}
 
-	if((node = zram_get_node(zram, index)))
-		spin_lock(&node->lock);
 	handle = zram_get_handle(zram, index);
 	if (!handle || zram_test_flag(zram, index, ZRAM_SAME)) {
 		unsigned long value;
@@ -1318,11 +1311,7 @@ static int __zram_bvec_read(struct zram *zram, struct page *page, u32 index,
 		zcomp_stream_put(zram->comp);
 	}
 	zs_unmap_object(zram->mem_pool, handle);
-	// if(node)
-	// 	spin_unlock(&node->lock);
 	zram_slot_unlock(zram, index);
-	if(node)
-		spin_unlock(&node->lock);
 
 	/* Should NEVER happen. Return bio error if it does. */
 	if (WARN_ON(ret))
